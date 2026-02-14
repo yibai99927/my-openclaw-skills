@@ -1,0 +1,6 @@
+#!/bin/bash
+# Model Switch CLI Wrapper
+# 调用 Python 脚本的包装器
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+python3 "$SCRIPT_DIR/model-switch.py" "$@"
