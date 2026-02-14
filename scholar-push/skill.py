@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Scholar Push - Google Scholar 文献推送
-从 Gmail 获取 Google Scholar 推送，输出精确期刊信息
+Scholar Push - Google Scholar 文献推送 + 粗读
+从 Gmail 获取 Google Scholar 推送，输出精确期刊信息 + 学术粗读
 """
 
 import os
@@ -21,7 +21,6 @@ try:
     GMAIL_AVAILABLE = True
 except ImportError:
     GMAIL_AVAILABLE = False
-    print("⚠️ 需要安装 google-api-python-client")
 
 # CrossRef cache
 crossref_cache = {}
@@ -30,32 +29,26 @@ def get_venue_from_doi(url, title):
     """通过 DOI 获取精确期刊信息"""
     url_lower = url.lower()
     
-    # 提取 DOI
     doi_match = re.search(r'(10\.\d{4,}/[a-zA-Z0-9._\-]+)', url)
     if doi_match:
         doi = doi_match.group(1)
         doi = re.sub(r'/(pdf|abs|html?)$', '', doi, flags=re.I)
         
-        # 查缓存
         if doi in crossref_cache:
             return crossref_cache[doi]
         
-        # 查询 CrossRef
         try:
             resp = requests.get(f"https://api.crossref.org/works/{doi}", timeout=5)
             if resp.status_code == 200:
                 msg = resp.json().get('message', {})
                 container = msg.get('container-title', [])
                 venue = container[0] if container else None
-                
-                # 会议论文
                 if msg.get('type') == 'proceedings-article':
                     event = msg.get('event', {})
                     if isinstance(event, dict):
                         event_name = event.get('name', '')
                         if event_name:
                             venue = event_name
-                
                 if venue:
                     crossref_cache[doi] = venue
                     return venue
@@ -64,8 +57,7 @@ def get_venue_from_doi(url, title):
     
     # 标题搜索备选
     try:
-        resp = requests.get("https://api.crossref.org/works", 
-                           params={"query": title, "rows": 2}, timeout=5)
+        resp = requests.get("https://api.crossref.org/works", params={"query": title, "rows": 2}, timeout=5)
         if resp.status_code == 200:
             items = resp.json().get('message', {}).get('items', [])
             for item in items:
@@ -102,6 +94,56 @@ def get_venue_from_doi(url, title):
     
     return "未知"
 
+def get_paper_details(doi, title):
+    """从 CrossRef/Semantic Scholar 获取论文详情辅助粗读"""
+    details = {
+        'abstract': '',
+        'authors': [],
+        'year': '',
+        'venue': ''
+    }
+    
+    # 从 CrossRef 获取
+    try:
+        if doi:
+            resp = requests.get(f"https://api.crossref.org/works/{doi}", timeout=10)
+            if resp.status_code == 200:
+                msg = resp.json().get('message', {})
+                details['abstract'] = msg.get('abstract', '')[:500]
+                details['authors'] = [f"{a.get('given', '')} {a.get('family', '')}" 
+                                     for a in msg.get('author', [])[:5]]
+                details['year'] = str(msg.get('published-print', {}).get('date-parts', [[]])[0][0]) if msg.get('published-print') else ''
+                container = msg.get('container-title', [])
+                details['venue'] = container[0] if container else ''
+    except:
+        pass
+    
+    return details
+
+def parse_date(date_str):
+    """解析日期格式"""
+    try:
+        parts = date_str.split()
+        if len(parts) >= 4:
+            day = parts[1]
+            month = parts[2]
+            year = parts[3]
+            months = {'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04',
+                     'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
+                     'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'}
+            return f"{year}.{months.get(month, '01')}.{int(day):02d}"
+    except:
+        pass
+    return date_str[:10]
+
+def extract_doi(url):
+    """从 URL 提取 DOI"""
+    doi_match = re.search(r'(10\.\d{4,}/[a-zA-Z0-9._\-]+)', url)
+    if doi_match:
+        doi = doi_match.group(1)
+        return re.sub(r'/(pdf|abs|html?)$', '', doi, flags=re.I)
+    return None
+
 def get_gmail_service():
     """获取 Gmail 服务"""
     token_path = os.path.expanduser('~/.config/gmail/token.json')
@@ -120,31 +162,7 @@ def get_gmail_service():
         client_secret=token_data['client_secret'],
         scopes=token_data['scopes']
     )
-    
     return build('gmail', 'v1', credentials=creds)
-
-def parse_date(date_str):
-    """解析日期格式"""
-    # 格式: "Tue, 10 Feb 2026 12:39:04 -0800"
-    try:
-        # 提取日期部分
-        parts = date_str.split()
-        if len(parts) >= 4:
-            day = parts[1]
-            month = parts[2]
-            year = parts[3]
-            return f"{year}.{month_to_num(month)}.{int(day):02d}"
-    except:
-        pass
-    return date_str[:10]
-
-def month_to_num(month):
-    months = {
-        'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04',
-        'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
-        'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
-    }
-    return months.get(month, '01')
 
 def fetch_articles(days=7):
     """获取最近N天的文章"""
@@ -152,7 +170,6 @@ def fetch_articles(days=7):
     if not service:
         return []
     
-    # 计算时间戳
     since = int((datetime.now() - timedelta(days=days)).timestamp())
     
     results = service.users().messages().list(
@@ -183,7 +200,8 @@ def fetch_articles(days=7):
                     'title': title,
                     'author': author,
                     'url': url,
-                    'date_raw': date_str
+                    'date_raw': date_str,
+                    'doi': extract_doi(url)
                 })
         time.sleep(0.2)
     
@@ -198,7 +216,27 @@ def fetch_articles(days=7):
     
     return unique
 
-def format_output(articles):
+def generate_reading(article):
+    """生成学术粗读（简化版，需要 AI 辅助完善）"""
+    # 获取论文详情
+    details = get_paper_details(article.get('doi'), article['title'])
+    
+    # 生成简化版粗读框架
+    reading = {
+        '研究背景': '（请根据论文摘要和标题自行补充...）',
+        '核心方法': '（请根据论文摘要自行补充...）',
+        '结果与贡献': '（请根据论文摘要自行补充...）',
+        '关键词': '（从标题和摘要提取）'
+    }
+    
+    # 如果有摘要，提取关键词
+    if details.get('abstract'):
+        # 简化关键词提取
+        reading['关键词'] = article['title'][:80]
+    
+    return reading
+
+def format_output(articles, with_reading=False):
     """格式化输出"""
     # 获取期刊信息
     for a in articles:
@@ -213,10 +251,21 @@ def format_output(articles):
     output.append(f"\n共 {len(articles)} 篇新文章\n")
     
     for i, a in enumerate(articles, 1):
-        output.append(f"【{i}】{a['title']}")
+        output.append(f"【{i}】**{a['title']}**")
         output.append(f"作者：{a['author']}")
         output.append(f"期刊/会议：{a['venue']}")
         output.append(f"推送时间：{a['date']}")
+        
+        if with_reading:
+            reading = generate_reading(a)
+            output.append("")
+            output.append(f"**研究背景**：{reading['研究背景']}")
+            output.append(f"**核心方法**：{reading['核心方法']}")
+            output.append(f"**结果与贡献**：{reading['结果与贡献']}")
+            output.append(f"**关键词**：{reading['关键词']}")
+        
+        output.append("")
+        output.append("---")
         output.append("")
     
     return "\n".join(output)
@@ -228,12 +277,14 @@ def main():
     
     # 解析参数
     days = 7
+    mode = 'list'  # list, read
     if len(sys.argv) > 1:
         if sys.argv[1] == 'days' and len(sys.argv) > 2:
             days = int(sys.argv[2])
-        elif sys.argv[1] == 'help':
-            print(__doc__)
-            return
+        elif sys.argv[1] in ['list', 'read']:
+            mode = sys.argv[1]
+            if len(sys.argv) > 2 and sys.argv[2] == 'days':
+                days = int(sys.argv[3]) if len(sys.argv) > 3 else 7
     
     print(f"正在获取最近 {days} 天的推送...\n")
     articles = fetch_articles(days)
@@ -242,7 +293,10 @@ def main():
         print("未找到新的文献推送")
         return
     
-    print(format_output(articles))
+    if mode == 'read':
+        print(format_output(articles, with_reading=True))
+    else:
+        print(format_output(articles, with_reading=False))
 
 if __name__ == "__main__":
     main()
