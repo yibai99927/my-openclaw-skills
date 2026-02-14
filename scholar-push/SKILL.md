@@ -71,8 +71,45 @@ python3 skill.py fetch https://doi.org/xxx
 - **CrossRef API**: 通过 DOI 查询精确期刊/会议信息
 - **Semantic Scholar API**: 获取论文摘要、作者单位等信息辅助粗读
 
-## 注意事项
+## Zotero 分类结构
 
-- 需要 Gmail OAuth 认证 (~/.config/gmail/token.json)
-- 需要网络访问 CrossRef / Semantic Scholar API
-- 首次使用需要配置 Gmail 认证
+用户 Zotero 使用层级分类，保存论文时需要识别最佳分类：
+
+```
+01-Material & Mechanism（材料与机理）
+├── 01-Switching Mechanism（开关机理）
+├── 02-Selector & Neuron（选通器与神经元）
+├── 03-2D Materials（二维材料）
+└── 04-PCM & Other Mem（PCM与其他存储器）
+
+02-Device & Array（器件与阵列）
+├── 01-Device Modeling（器件建模）
+├── 02-3D Integration（三维集成）
+└── 03-Peripheral Circuits（外围电路）
+
+03-Architecture & Logic（架构与逻辑）
+├── 01-Analog Computing（模拟计算）
+├── 02-Digital & Logic（数字与逻辑）
+└── 03-Heterogeneous（异质集成）
+
+04-System & Application（系统与应用）
+├── 01-Neural Networks（神经网络）
+├── 02-Security（安全）
+├── 03-Robotics & SLAM（机器人与SLAM）
+└── 04-In sensor computing（传感器计算）
+
+05-Reference（参考资料）
+├── 01-Review（综述）
+├── 02-Top Conferences（顶级会议）
+└── 03-Background（背景）
+```
+
+### 分类识别规则
+
+| 论文主题 | 推荐分类 |
+|----------|----------|
+| 铁电/忆阻器/PCM/存储器 | 01-Material & Mechanism > 04-PCM & Other Mem |
+| 器件制备/阵列/工艺 | 02-Device & Array |
+| 模拟计算/存算一体/CIM | 03-Architecture & Logic > 01-Analog Computing |
+| 神经网络/AI芯片 | 04-System & Application > 01-Neural Networks |
+| 安全硬件/PUF | 04-System & Application > 02-Security |
