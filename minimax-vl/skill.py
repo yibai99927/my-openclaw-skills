@@ -8,15 +8,23 @@ import os
 import sys
 import subprocess
 
-API_KEY = "sk-cp-tmBPJ6zO_1ibLb_CU8JZEHewx3hThPFXGodC-pLqmFG3AZ3tahsbOYn27DglcTs4iIG6Bq0LfRNGTdjHMwP1YVNXlkVNA-f6wcdA9M53TcHDVieqSzzP9wc"
-API_HOST = "https://api.minimaxi.com"
+API_KEY = os.environ.get("MINIMAX_API_KEY", "")
+API_HOST = os.environ.get("MINIMAX_API_HOST", "https://api.minimaxi.com")
 
 def understand_image(image_path, prompt="请描述这张图片"):
     """调用 MiniMax MCP 理解图片"""
-    
+
+    if not API_KEY:
+        return "Error: MINIMAX_API_KEY is not set"
+
     # 使用 shell 命令
-    cmd = f'''export PATH="/home/yibai/.local/bin:$PATH" && export MINIMAX_API_KEY="{API_KEY}" && export MINIMAX_API_HOST="{API_HOST}" && mcporter call --stdio "uvx minimax-coding-plan-mcp" understand_image "prompt:{prompt}" "image_source:{image_path}"'''
-    
+    cmd = (
+        f'export MINIMAX_API_KEY="{API_KEY}" && '
+        f'export MINIMAX_API_HOST="{API_HOST}" && '
+        f'mcporter call --stdio "uvx minimax-coding-plan-mcp" '
+        f'understand_image "prompt:{prompt}" "image_source:{image_path}"'
+    )
+
     try:
         result = subprocess.run(
             cmd,
